@@ -1,5 +1,8 @@
 //Version Notes:
 // using enumerated blinkTypes in some cases for color
+//stores spawn rates in a list
+//has WINTOKENS
+//double click to start
 #define PALE makeColorHSB(200,60,60)
 #define lightHue 230
 #define geistHue 135
@@ -11,6 +14,7 @@
 #define PERIOD 2000
 #define SURVIVAL_TIME 50000 //one minute
 #define INITIAL_SPAWN_TIME 500
+#define WINTOKEN_SPAWN_CHANCE 90
 
 // 100-these gives you the chance of spawn
 byte BOSS_SPAWN_CHANCE;   //95 seems good 
@@ -18,11 +22,11 @@ byte GHOST_GHOUL_SPAWN_CHANCE;  //80 seems good
 byte POLTER_SPAWN_CHANCE;
 
 // A B C D E F
-enum blinkType {EMPTY,GHOST,GHOUL,DEAD,WIN,LIGHT,BEAM,GEISTGUN,BOSS,POLTER};
+enum blinkType {EMPTY,GHOST,GHOUL,DEAD,WIN,LIGHT,BEAM,GEISTGUN,BOSS,POLTER,WINTOKEN};
 byte blinkType=EMPTY;
 enum signalState {LEVELSELECT,PLAY,GO,RESOLVE};
 byte signalState=LEVELSELECT;
-byte levelDifficulty;
+byte levelDifficulty=1;
 bool source=false;
 byte sendData;
 
@@ -30,6 +34,7 @@ Timer ghostWaitTimer;//when this runs out a new ghost may or may not spawn
 Timer deadTimer; //whent this runs out you lose
 Timer gameTimer;
 Timer bossTimer;
+Timer winTokenTimer;
 
 byte receivingFace; //to orient the beam of light
 byte dimness;
@@ -39,11 +44,14 @@ byte receivedLevelDifficulty;
 byte badBoiType;
 byte badBoiHue[4]={lightHue,ghoulHue,geistHue,bossHue};
 byte faceBlinkType[6]={EMPTY,EMPTY,EMPTY,EMPTY,EMPTY,EMPTY};
+byte spawnRates[18]={80,80,75,80,80,75,0,15,17,0,15,20,101,101,101,97,97,90};
+byte winTokenSpawnChance=101;
+byte winFace=0;
+
 
 void setup() {
   // put your setup code here, to run once:
   randomize();
-  levelDifficulty=1;
 }
 
 void loop() {
@@ -84,6 +92,9 @@ void loop() {
       case DEAD:
          deadDisplay();
          break;
+      case WINTOKEN:
+          winTokenDisplay();
+          break;
     }
   }else{
     levelSelectDisplay();
@@ -117,11 +128,9 @@ void levelSelectLoop(){
 
   //WEAPON MAKER    Maybe double click while attached to start game?
   if(buttonDoubleClicked()){
-      if(isAlone()){
         signalState=GO;
         source=true;
         blinkType=LIGHT;
-      }
     }
 
   //CHANGE TO PLAY STAGE
@@ -190,10 +199,10 @@ void PLAYLoop() {
 //------------------------------------
 
     if(buttonDoubleClicked()){
-      if(isAlone()){
-        source=true;
-        blinkType=LIGHT;
-      }
+        if(!source){
+          source=true;
+          blinkType=LIGHT;
+        }
     }
 
     //WHAT WEAPONS ARE AVAILABLE
@@ -213,12 +222,33 @@ void PLAYLoop() {
       }
     }
   
-//WIN CONDITION
+//WIN CONDITION and WINTOKENS
   if(gameTimer.isExpired()){
-    if(blinkType!=DEAD && source==false){
-      blinkType=WIN;
+    if(levelDifficulty!=6){
+      if(blinkType!=DEAD && source==false){
+        blinkType=WIN;
+      }
+    }else{
+      //WINTOKEN spawn
+      if(winTokenTimer.isExpired()){
+        if(WINTOKEN_SPAWN_CHANCE<random(100)){
+           blinkType=WINTOKEN;
+        }
+        winTokenTimer.set(GHOST_WAIT_TIME);
+      }
     }
   }
+
+  if(blinkType==WINTOKEN){
+      if(!isValueReceivedOnFaceExpired(winFace)){
+        if(getBlinkType(getLastValueReceivedOnFace(winFace))==LIGHT){
+          blinkType==WIN;
+        }
+      }
+  }
+
+
+  
 
   if(blinkType!=DEAD){
     FOREACH_FACE(f){
@@ -282,6 +312,8 @@ void PLAYLoop() {
       bossTimer.set(BOSS_TIME);
     }
   }
+
+
 }
   
 //----------------
@@ -409,40 +441,9 @@ void goLoop() {
   
   bossTimer.set(BOSS_TIME);
   ghostWaitTimer.set((random(INITIAL_SPAWN_TIME)*3));
-   
-  
-  switch(levelDifficulty){
-    case 1: // just ghosts and ghouls... classic
-      BOSS_SPAWN_CHANCE=101;
-      GHOST_GHOUL_SPAWN_CHANCE=80;
-      POLTER_SPAWN_CHANCE=0;   
-      break;
-    case 2: //Ghosts ghouls and poltergeists.... oh boy
-      BOSS_SPAWN_CHANCE=101;
-      GHOST_GHOUL_SPAWN_CHANCE=80;
-      POLTER_SPAWN_CHANCE=15;    
-      break;
-    case 3:   // ghosts ghouls and poltergeists, but harder
-      BOSS_SPAWN_CHANCE=101;
-      GHOST_GHOUL_SPAWN_CHANCE=75;
-      POLTER_SPAWN_CHANCE=17;    
-      break;
-    case 4: //og difficulty (ghosts ghouls, goblins)
-      BOSS_SPAWN_CHANCE=97;
-      GHOST_GHOUL_SPAWN_CHANCE=80;
-      POLTER_SPAWN_CHANCE=0;
-      break;
-   case 5:                       //oh boy...
-      BOSS_SPAWN_CHANCE=97;
-      GHOST_GHOUL_SPAWN_CHANCE=80;
-      POLTER_SPAWN_CHANCE=15;  
-      break;
-   case 6:                      //good luck :)
-      BOSS_SPAWN_CHANCE=90;
-      GHOST_GHOUL_SPAWN_CHANCE=75;
-      POLTER_SPAWN_CHANCE=20;  
-      break;
-  }
+  GHOST_GHOUL_SPAWN_CHANCE=spawnRates[levelDifficulty-1];
+  POLTER_SPAWN_CHANCE=spawnRates[6+levelDifficulty-1];
+  BOSS_SPAWN_CHANCE=spawnRates[12+levelDifficulty-1];
   
   gameTimer.set(SURVIVAL_TIME);
 
@@ -562,7 +563,7 @@ void badBoiDisplay(){
   setColor(makeColorHSB(badBoiHue[badBoiType],sat,dimness));
   
   FOREACH_FACE(f){
-    if(f<=badFaces){
+    if(f<=badFaces-1){
       setColorOnFace(makeColorHSB(badBoiHue[badBoiType],sat,dimness-120),f);
     }
   }
@@ -578,11 +579,23 @@ void levelSelectDisplay(){
   }
 }
 
+void winTokenDisplay(){
+  if(ghostWaitTimer.isExpired()){
+    winFace++;
+    if(winFace>5){
+      winFace=0;
+    }
+    ghostWaitTimer.set(INITIAL_SPAWN_TIME);
+  }
+  setColor(OFF);
+  setColorOnFace(YELLOW,winFace);
+}
+
 bool noGhostNeighbors(){
   byte neighbors=0;
   FOREACH_FACE(f) {
     if (!isValueReceivedOnFaceExpired(f)) {//a neighbor!
-      if (getBlinkType(getLastValueReceivedOnFace(f)) !=EMPTY) {
+      if (getBlinkType(getLastValueReceivedOnFace(f)) != EMPTY) {
           neighbors++;
       }
     }
