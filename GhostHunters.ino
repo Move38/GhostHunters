@@ -1,8 +1,18 @@
-//Version Notes:
-//9/29/2020
-// using enumerated blinkTypes in some cases for color
-//stores spawn rates in a list
-//double click to start
+/*
+ *  Ghost Hunters
+ *  by Keir Williams 2020
+ *  Lead development by Keir Williams
+ *  Additional development by Daniel King
+ *
+ *  --------------------
+ *  Blinks by Move38
+ *  Brought to life via Kickstarter 2018
+ *
+ *  @madewithblinks
+ *  www.move38.com
+ *  --------------------
+ */
+
 #define PALE makeColorHSB(200,60,60)
 #define lightHue 230
 #define geistHue 135
