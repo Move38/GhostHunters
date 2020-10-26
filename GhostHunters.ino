@@ -19,11 +19,14 @@
 #define bossHue 75
 #define ghoulHue 8
 #define DEAD_TIME 4500
-#define GHOST_WAIT_TIME 2000
+#define BOSS_DEAD_TIME 5400
+#define GHOST_WAIT_TIME_EASY 2500
+#define GHOST_WAIT_TIME_MEDIUM 2000
+#define GHOST_WAIT_TIME_HARD 1700
 #define BOSS_TIME 3000
 #define PERIOD 2000
 #define SURVIVAL_TIME 50000 //one minute
-#define INITIAL_SPAWN_TIME 500
+#define INITIAL_SPAWN_TIME 800
 #define WINTOKEN_SPAWN_CHANCE 98
 #define ROTATE_FACE_TIME 800
 
@@ -57,8 +60,8 @@ byte badBoiType;
 byte badBoiHue[4]={lightHue,ghoulHue,geistHue,bossHue};
 byte faceBlinkType[6]={EMPTY,EMPTY,EMPTY,EMPTY,EMPTY,EMPTY};
 
-                                   //75            /20                  //90
-byte spawnRates[18]={80,80,75,80,80,80,0,12,17,0,15,15,101,101,101,97,97,97};
+                                              
+byte spawnRates[18]={80,80,75,80,80,80,5,12,17,5,13,13,101,101,101,97,95,97};
 
 byte hitFace=0;
 byte requiredWeapon=0;
@@ -140,19 +143,14 @@ void loop() {
 
 void levelSelectLoop(){
 
-  //WEAPON MAKER    Maybe double click while attached to start game?
+  //WEAPON MAKER
   if(buttonDoubleClicked()){
+    if(isAlone()){
         signalState=GO;
         source=true;
         blinkType=LIGHT;
-    }
-
-  //CHANGE TO PLAY STAGE
-  if(buttonMultiClicked()){
-    byte clicks=buttonClickCount();
-    if(clicks==3){
+    }else{
       blinkType=EMPTY;
-     
       signalState=GO;
     }
   }
@@ -195,42 +193,29 @@ void levelSelectLoop(){
 }
 
 void PLAYLoop() {
-
-
-  
-//------------------------------------
-//   FLASHLIGHT AND LASER HANDLING
-//------------------------------------
-
     if(buttonDoubleClicked()){
-        if(!source){
-          if(gameTimer.getRemaining() < (SURVIVAL_TIME-1000)){
-            signalState=RESOLVE;
-          }else{
-            source=true;
-            blinkType=LIGHT;
-          }
-        }
+      if(!source){
+        signalState=RESOLVE;
+      }
     }
 
-
-
-    //WHAT WEAPONS ARE AVAILABLE
-     
+    //cycle through gadget types
     if(source==true){
       if(buttonPressed()){
         blinkType++;
-        if(levelDifficulty<2 || levelDifficulty==4){
-            if(blinkType>6){
-               blinkType=5;
-            }
-          }else{
-            if(blinkType>7){
-               blinkType=5;
-            }
-          }
+        if(blinkType>7){
+           blinkType=5;
+         }
+      }
+
+      //make a gadget back to a normal piece
+      if(buttonLongPressed()){
+        source=false;
+        blinkType=EMPTY;
+        signalState=RESOLVE;
       }
     }
+
   
 //WIN CONDITION and WINTOKENS
   if(gameTimer.isExpired()){
@@ -242,7 +227,7 @@ void PLAYLoop() {
             blinkType=WINTOKEN;
             requiredWeapon=5;
           }
-          winTokenTimer.set(GHOST_WAIT_TIME);
+          winTokenTimer.set(GHOST_WAIT_TIME_MEDIUM);
         }
       }
     }else{
@@ -252,7 +237,6 @@ void PLAYLoop() {
     }
   }
 
-//hitface rotates and required weapon is defined by the array?
   if(blinkType==WINTOKEN){
     if(rotateFaceTimer.isExpired()){
       hitFace++;
@@ -312,8 +296,20 @@ void PLAYLoop() {
           badBoiType=2;
         }
       
-      ghostWaitTimer.set(GHOST_WAIT_TIME);
-      //ghostWaitTimer.set(random(500)+RANDOM_GHOST_TIME);
+      switch(levelDifficulty){
+        case 1:
+        case 4:
+          ghostWaitTimer.set(GHOST_WAIT_TIME_EASY);
+          break;
+        case 2:
+        case 5:
+          ghostWaitTimer.set(GHOST_WAIT_TIME_MEDIUM);
+          break;
+        case 3:
+        case 6:
+          ghostWaitTimer.set(GHOST_WAIT_TIME_HARD);
+          break;
+      }
     }
   
     //BOSS SPAWNIN
@@ -322,7 +318,7 @@ void PLAYLoop() {
         if(randomHaunting>=BOSS_SPAWN_CHANCE){  //CHANGE TO ADJUST SPAWN RATE
           blinkType=BOSS;
           badBoiType=3;
-          deadTimer.set(DEAD_TIME);
+          deadTimer.set(BOSS_DEAD_TIME);
         }
       bossTimer.set(BOSS_TIME);
     }
@@ -331,9 +327,8 @@ void PLAYLoop() {
 
 }
   
-//----------------
-//   KILLING MOBS 
-//----------------
+
+  //handling mobs killing you
   if(blinkType==BOSS){
     if(isReceivingLaser() && isReceivingLight()){
       blinkType=EMPTY;
@@ -453,9 +448,14 @@ void goLoop() {
   if(!source){
     blinkType=EMPTY;
   }
+
+  if(levelDifficulty==1){
+      ghostWaitTimer.set((random(INITIAL_SPAWN_TIME)*3)+500);
+  }else{
+      ghostWaitTimer.set((random(INITIAL_SPAWN_TIME)*3));
+  }
   
   bossTimer.set(BOSS_TIME);
-  ghostWaitTimer.set((random(INITIAL_SPAWN_TIME)*3));
   GHOST_GHOUL_SPAWN_CHANCE=spawnRates[levelDifficulty-1];
   POLTER_SPAWN_CHANCE=spawnRates[6+levelDifficulty-1];
   BOSS_SPAWN_CHANCE=spawnRates[12+levelDifficulty-1];
@@ -479,6 +479,7 @@ void goLoop() {
 void resolveLoop() {
   signalState = LEVELSELECT;//I default to this at the start of the loop. Only if I see a problem does this not happen
 
+  
   blinkType=EMPTY;
   source=false;
   FOREACH_FACE(f){
@@ -548,9 +549,9 @@ void beamsDisplay(){
     }else if(blinkType==BEAM){
       setColor(OFF);
       setColorOnFace(makeColorHSB(badBoiHue[blinkType-5],sat,255),receivingFace);
-      setColorOnFace(makeColorHSB(badBoiHue[blinkType-5],240,255),(receivingFace+3)%6);
+      setColorOnFace(makeColorHSB(badBoiHue[blinkType-5],sat,255),(receivingFace+3)%6);
     }else{
-      setColor(makeColorHSB(badBoiHue[blinkType-5],random(50)+190,random(70)+70));
+      setColor(makeColorHSB(badBoiHue[blinkType-5],random(70)+170,random(75)+55));
       setColorOnFace(makeColorHSB(badBoiHue[blinkType-5],sat,255),receivingFace);
       setColorOnFace(makeColorHSB(badBoiHue[blinkType-5],sat,255),(receivingFace+3)%6);
     }
