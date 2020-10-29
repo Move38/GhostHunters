@@ -20,23 +20,23 @@
 #define ghoulHue 8
 #define DEAD_TIME 4500
 #define BOSS_DEAD_TIME 5400
-#define GHOST_WAIT_TIME_EASY 2500
-#define GHOST_WAIT_TIME_MEDIUM 2000
-#define GHOST_WAIT_TIME_HARD 1700
+#define GHOST_WAIT_TIME_EASY 3000
+#define GHOST_WAIT_TIME_MEDIUM 2700
+#define GHOST_WAIT_TIME_HARD 2400
 #define BOSS_TIME 3000
 #define PERIOD 2000
-#define SURVIVAL_TIME 50000 //one minute
-#define INITIAL_SPAWN_TIME 800
-#define WINTOKEN_SPAWN_CHANCE 98
-#define ROTATE_FACE_TIME 800
+#define SURVIVAL_TIME 50000 
+#define LEVEL_SIX_SURVIVAL_TIME 70000 
+#define INITIAL_SPAWN_TIME 500
+#define ROTATE_FACE_TIME 145
 
 // 100-these gives you the chance of spawn
-byte BOSS_SPAWN_CHANCE;   //95 seems good 
-byte GHOST_GHOUL_SPAWN_CHANCE;  //80 seems good
+byte BOSS_SPAWN_CHANCE; 
+byte GHOST_GHOUL_SPAWN_CHANCE;  
 byte POLTER_SPAWN_CHANCE;
 
 // A B C D E F
-enum blinkType {EMPTY,GHOST,GHOUL,DEAD,WIN,LIGHT,BEAM,GEISTGUN,BOSS,POLTER,WINTOKEN};
+enum blinkType {EMPTY,GHOST,GHOUL,DEAD,WIN,LIGHT,BEAM,GEISTGUN,BOSS,POLTER};
 byte blinkType=EMPTY;
 enum signalState {LEVELSELECT,PLAY,GO,RESOLVE};
 byte signalState=LEVELSELECT;
@@ -49,7 +49,6 @@ Timer deadTimer; //whent this runs out you lose
 Timer gameTimer;
 Timer bossTimer;
 Timer rotateFaceTimer;
-Timer winTokenTimer;
 
 byte receivingFace; //to orient the beam of light
 byte dimness;
@@ -57,14 +56,16 @@ byte randomHaunting; //to see if haunted
 byte ghoulOrGhost; //decides ghoul or ghost
 byte receivedLevelDifficulty;
 byte badBoiType;
+byte killerBlinkType;
+byte swirlFace=0;
 byte badBoiHue[4]={lightHue,ghoulHue,geistHue,bossHue};
 byte faceBlinkType[6]={EMPTY,EMPTY,EMPTY,EMPTY,EMPTY,EMPTY};
 
-                                              
-byte spawnRates[18]={80,80,75,80,80,80,5,12,17,5,13,13,101,101,101,97,95,97};
+bool isKiller=false;
 
-byte hitFace=0;
-byte requiredWeapon=0;
+                                              
+//byte spawnRates[18]={80,80,75,80,80,80,3,12,17,3,13,13,101,101,101,97,95,97};
+byte spawnRates[18]={80,80,75,85,80,85,2,8,10,3,8,8,101,101,101,97,95,93};
 
 void setup() {
   // put your setup code here, to run once:
@@ -109,9 +110,6 @@ void loop() {
       case DEAD:
          deadDisplay();
          break;
-       case WINTOKEN:
-          winTokenDisplay();
-          break;
     }
   }else{
     levelSelectDisplay();
@@ -206,8 +204,7 @@ void PLAYLoop() {
         if(blinkType>7){
            blinkType=5;
          }
-      }
-
+     }
       //make a gadget back to a normal piece
       if(buttonLongPressed()){
         source=false;
@@ -219,40 +216,8 @@ void PLAYLoop() {
   
 //WIN CONDITION and WINTOKENS
   if(gameTimer.isExpired()){
-    if(levelDifficulty==6){ //wintoken spawn things
-      if(blinkType==EMPTY){
-        if(winTokenTimer.isExpired()){
-          byte winTokenChance=random(100);
-          if(winTokenChance>WINTOKEN_SPAWN_CHANCE){
-            blinkType=WINTOKEN;
-            requiredWeapon=5;
-          }
-          winTokenTimer.set(GHOST_WAIT_TIME_MEDIUM);
-        }
-      }
-    }else{
-     if(blinkType!=DEAD && source==false){
+      if(blinkType!=DEAD && source==false){
        blinkType=WIN;
-     }
-    }
-  }
-
-  if(blinkType==WINTOKEN){
-    if(rotateFaceTimer.isExpired()){
-      hitFace++;
-      if(hitFace>5){
-        hitFace=0;
-      }
-      rotateFaceTimer.set(ROTATE_FACE_TIME);
-    }
-    
-     if(!isValueReceivedOnFaceExpired(hitFace)){
-        if(getBlinkType(getLastValueReceivedOnFace(hitFace))==requiredWeapon){
-            requiredWeapon++;
-            if(requiredWeapon==8){
-              blinkType=WIN;
-            }
-        }
      }
   }
 
@@ -335,6 +300,18 @@ void PLAYLoop() {
     }
   }
 
+  if(blinkType==BOSS){
+    if(isReceivingLight()){
+      if(isReceivingLaser() || isReceivingGeistGun()){
+        blinkType=EMPTY;
+      }
+    }else if(isReceivingLaser()){
+      if(isReceivingLight() || isReceivingGeistGun()){
+        blinkType=EMPTY;
+      }
+    }
+  }
+
   if(blinkType==GHOST){
     if(isReceivingLight()){
       blinkType=EMPTY;
@@ -366,6 +343,9 @@ void PLAYLoop() {
     if(!isValueReceivedOnFaceExpired(receivingFace)){
       if(getBlinkType(getLastValueReceivedOnFace(receivingFace))==LIGHT){
         blinkType=LIGHT;
+        FOREACH_FACE(f){
+          faceBlinkType[f]=EMPTY;
+        }
         faceBlinkType[(receivingFace+3)%6]=LIGHT;
       }else{
         blinkType=EMPTY;
@@ -383,6 +363,9 @@ void PLAYLoop() {
     if(!isValueReceivedOnFaceExpired(receivingFace)){
       if(getBlinkType(getLastValueReceivedOnFace(receivingFace))==BEAM){
         blinkType=BEAM;
+        FOREACH_FACE(f){
+          faceBlinkType[f]=EMPTY;
+        }
         faceBlinkType[(receivingFace+3)%6]=BEAM;
       }else{
         blinkType=EMPTY;
@@ -399,6 +382,9 @@ void PLAYLoop() {
     if(!isValueReceivedOnFaceExpired(receivingFace)){
       if(getBlinkType(getLastValueReceivedOnFace(receivingFace))==GEISTGUN){
         blinkType=GEISTGUN;
+        FOREACH_FACE(f){
+          faceBlinkType[f]=EMPTY;
+        }
         faceBlinkType[(receivingFace+3)%6]=GEISTGUN;
       }else{
         blinkType=EMPTY;
@@ -427,7 +413,9 @@ void PLAYLoop() {
   //IF I DONT KILL THE GHOSTS OR GHOULS FAST ENOUGH I DIE
   if(blinkType==GHOST || blinkType==GHOUL || blinkType==BOSS || blinkType==POLTER){
     if(deadTimer.isExpired()){
+      killerBlinkType=blinkType;
       blinkType=DEAD;
+      isKiller=true;
     }
   }
 
@@ -450,17 +438,21 @@ void goLoop() {
   }
 
   if(levelDifficulty==1){
-      ghostWaitTimer.set((random(INITIAL_SPAWN_TIME)*3)+500);
+      ghostWaitTimer.set((random(INITIAL_SPAWN_TIME)*2)+1000);
   }else{
-      ghostWaitTimer.set((random(INITIAL_SPAWN_TIME)*3));
+      ghostWaitTimer.set((random(INITIAL_SPAWN_TIME)*2)+750);
   }
   
   bossTimer.set(BOSS_TIME);
   GHOST_GHOUL_SPAWN_CHANCE=spawnRates[levelDifficulty-1];
   POLTER_SPAWN_CHANCE=spawnRates[6+levelDifficulty-1];
   BOSS_SPAWN_CHANCE=spawnRates[12+levelDifficulty-1];
-  
-  gameTimer.set(SURVIVAL_TIME);
+
+  if(levelDifficulty==6){
+    gameTimer.set(LEVEL_SIX_SURVIVAL_TIME);
+  }else{
+    gameTimer.set(SURVIVAL_TIME);
+  }
 
   //look for neighbors who have not heard the news
   FOREACH_FACE(f) {
@@ -478,9 +470,9 @@ void goLoop() {
 
 void resolveLoop() {
   signalState = LEVELSELECT;//I default to this at the start of the loop. Only if I see a problem does this not happen
-
   
   blinkType=EMPTY;
+  isKiller=false;
   source=false;
   FOREACH_FACE(f){
     faceBlinkType[f]=EMPTY;
@@ -530,6 +522,22 @@ bool isReceivingLight(){
   }
 }
 
+bool isReceivingGeistGun(){
+  byte geist=0;
+  FOREACH_FACE(f){
+    if (!isValueReceivedOnFaceExpired(f)) {//a neighbor!
+      if (getBlinkType(getLastValueReceivedOnFace(f)) == GEISTGUN){
+        geist++;
+      }
+    }
+  }
+  if(geist==0){
+    return false;
+  }else{
+    return true;
+  }
+}
+
 void breath(){
   byte breathProgress = map(millis()%PERIOD,0,PERIOD,0,255);
   dimness = (sin8_C(breathProgress)/2)+127;
@@ -551,17 +559,32 @@ void beamsDisplay(){
       setColorOnFace(makeColorHSB(badBoiHue[blinkType-5],sat,255),receivingFace);
       setColorOnFace(makeColorHSB(badBoiHue[blinkType-5],sat,255),(receivingFace+3)%6);
     }else{
-      setColor(makeColorHSB(badBoiHue[blinkType-5],random(70)+170,random(75)+55));
+      setColor(makeColorHSB(badBoiHue[blinkType-5],random(80)+160,random(75)+50));
       setColorOnFace(makeColorHSB(badBoiHue[blinkType-5],sat,255),receivingFace);
       setColorOnFace(makeColorHSB(badBoiHue[blinkType-5],sat,255),(receivingFace+3)%6);
     }
   }
 }
 
-
 void deadDisplay(){
   breath();
-  setColor(makeColorHSB(15,random(70)+170,dimness));
+  if(isKiller){
+    byte sat=255;
+    if(killerBlinkType==GHOST){
+      sat=0;
+    }
+    if(rotateFaceTimer.isExpired()){
+      swirlFace++;
+      if(swirlFace>5){
+        swirlFace=0;
+      }
+      rotateFaceTimer.set(ROTATE_FACE_TIME);
+    }
+    setColor(makeColorHSB(badBoiHue[badBoiType],sat,dimness));
+    setColorOnFace(makeColorHSB(badBoiHue[badBoiType],sat,dimness-100),swirlFace);
+  }else{
+    setColor(makeColorHSB(15,random(70)+170,dimness));
+  }
 }
 
 void winDisplay(){
@@ -595,15 +618,6 @@ void levelSelectDisplay(){
       setColorOnFace(WHITE,f);
     }
   }
-}
-
-void winTokenDisplay(){
-  byte sat=240;
-  if(requiredWeapon==5){
-    sat=0;
-  }
-  setColor(OFF);
-  setColorOnFace(makeColorHSB(badBoiHue[requiredWeapon-5],sat,255),hitFace);
 }
 
 
